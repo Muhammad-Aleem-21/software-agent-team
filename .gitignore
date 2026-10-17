@@ -17,5 +17,5 @@ venv/
 outputs/*
 !outputs/.gitkeep
 
-
+README.md
 .streamlit/config.toml
