@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Editor / OS
+.vscode/
+.DS_Store
+# Downloaded price list cache
+.cache/
+# Run results (keep the folder, ignore the contents)
+outputs/*
+!outputs/.gitkeep
+
+
+.streamlit/config.toml
