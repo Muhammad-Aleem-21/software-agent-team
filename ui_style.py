@@ -9,6 +9,8 @@ AGENTS = [
     ("reviewer", "🔍", "Reviewer", "Checks the code"),
 ]
 
+REPO_AGENT = ("repo_analyst", "🗂️", "Repo Analyst", "Reads your repo")
+
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -43,6 +45,11 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
   background: linear-gradient(90deg, rgba(128,128,128,.3) 40%, #6366f1 50%, rgba(128,128,128,.3) 60%); background-size: 200% 100%; animation: flow 1.6s linear infinite; }
 .badge { display: inline-block; padding: .2rem .7rem; border-radius: 99px; font-size: .78rem; font-weight: 600;
   background: rgba(99,102,241,.15); color: #6366f1; margin-bottom: .4rem; }
+
+/* GitHub connect button */
+a.ghbtn { display: inline-block; padding: .6rem 1.3rem; border-radius: 12px; font-weight: 700; color: #fff !important;
+  text-decoration: none !important; background: #24292f; transition: transform .15s ease, box-shadow .15s ease; }
+a.ghbtn:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(36,41,47,.45); }
 
 /* metric cards */
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .8rem; margin: 1rem 0; }
@@ -91,13 +98,13 @@ HERO = (
 )
 
 
-def pipeline_html(active: str | None, done: set[str], attempt: int = 0) -> str:
+def pipeline_html(active: str | None, done: set[str], attempt: int = 0, repo: bool = False) -> str:
     """The three agents as cards; the active one pulses, finished ones turn green."""
     parts = []
     if attempt:
         parts.append(f'<span class="badge">Attempt {attempt}</span>')
     parts.append('<div class="pipe">')
-    for i, (key, icon, name, sub) in enumerate(AGENTS):
+    for i, (key, icon, name, sub) in enumerate(([REPO_AGENT] if repo else []) + AGENTS):
         state = "active" if key == active else ("done" if key in done else "")
         if i:
             parts.append('<div class="arrow"></div>')
@@ -119,3 +126,7 @@ def cards_html(items: list[tuple[str, str]]) -> str:
 
 def verdict_html(ok: bool, text: str) -> str:
     return f'<div class="verdict {"ok" if ok else "warn"}">{"✅" if ok else "⚠️"} {escape(text)}</div>'
+
+
+def github_button_html(url: str) -> str:
+    return f'<a class="ghbtn" href="{escape(url, quote=True)}" target="_self">🔗 Connect GitHub</a>'

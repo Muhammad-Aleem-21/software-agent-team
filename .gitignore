@@ -11,11 +11,13 @@ venv/
 # Editor / OS
 .vscode/
 .DS_Store
+
 # Downloaded price list cache
 .cache/
+
 # Run results (keep the folder, ignore the contents)
 outputs/*
 !outputs/.gitkeep
 
-README.md
-.streamlit/config.toml
+# Streamlit secrets (local)
+.streamlit/secrets.toml

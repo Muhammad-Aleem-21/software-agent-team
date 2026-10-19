@@ -5,7 +5,12 @@ from typing import Any, Callable
 
 from langgraph.graph import END, START, StateGraph
 
-from .agents import make_developer_node, make_product_manager_node, make_reviewer_node
+from .agents import (
+    make_developer_node,
+    make_product_manager_node,
+    make_repo_analyst_node,
+    make_reviewer_node,
+)
 from .config import get_settings
 from .llm import get_llm
 from .state import TeamState, initial_state
@@ -22,12 +27,18 @@ def recursion_limit_for(max_iterations: int) -> int:
     return 10 + 4 * max_iterations
 
 
-def build_team_graph(llm_factory: Callable[[str], Any] = get_llm, supervisor_mode: str | None = None):
+def build_team_graph(
+    llm_factory: Callable[[str], Any] = get_llm,
+    supervisor_mode: str | None = None,
+    repo=None,
+):
     """Build and compile the team graph.
 
     llm_factory: given an agent name, returns the chat model for that agent
                  (tests pass a fake one, so no API key is needed).
     supervisor_mode: "llm" or "rules"; defaults to the SUPERVISOR_MODE setting.
+    repo: a RepoHandle to read an existing GitHub repo first (adds the Repo Analyst step).
+          None = the normal graph, exactly as before.
     """
     mode = supervisor_mode or get_settings().supervisor_mode
 
@@ -43,7 +54,12 @@ def build_team_graph(llm_factory: Callable[[str], Any] = get_llm, supervisor_mod
     graph.add_node("developer", make_developer_node(tagged("developer")))
     graph.add_node("reviewer", make_reviewer_node(tagged("reviewer")))
 
-    graph.add_edge(START, "supervisor")
+    if repo is None:
+        graph.add_edge(START, "supervisor")
+    else:  # repo mode: the analyst reads the repo once, then the usual team takes over
+        graph.add_node("repo_analyst", make_repo_analyst_node(tagged("repo_analyst"), repo))
+        graph.add_edge(START, "repo_analyst")
+        graph.add_edge("repo_analyst", "supervisor")
     graph.add_conditional_edges(
         "supervisor",
         route_from_supervisor,

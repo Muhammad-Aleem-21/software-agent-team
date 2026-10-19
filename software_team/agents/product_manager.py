@@ -8,7 +8,8 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from ..llm import content_text, require_text
-from ..prompts import PM_ANALYZE_SYSTEM, PM_SPEC_SYSTEM
+from ..prompts import PM_ANALYZE_SYSTEM, PM_SPEC_SYSTEM, REPO_PM_NOTE
+from ..repo_context import repo_block
 from ..state import TeamState, make_event
 
 NAME = "product_manager"
@@ -20,18 +21,33 @@ class PMState(TypedDict, total=False):
     request: str
     analysis: str
     spec: str
+    repo_mode: str  # repo mode only
+    repo_summary: str
 
 
 def build_product_manager_graph(llm):
+    def repo_text(state: PMState) -> str:  # "" in Quick mode
+        return repo_block(state.get("repo_mode", ""), state.get("repo_summary", ""))
+
+    def system_for(base: str, state: PMState) -> str:
+        return base + (REPO_PM_NOTE if state.get("repo_mode") == "existing" else "")
+
     def analyze(state: PMState, config: RunnableConfig) -> dict:
         reply = llm.invoke(
-            [SystemMessage(PM_ANALYZE_SYSTEM), HumanMessage(state["request"])], config=config
+            [
+                SystemMessage(system_for(PM_ANALYZE_SYSTEM, state)),
+                HumanMessage(state["request"] + repo_text(state)),
+            ],
+            config=config,
         )
         return {"analysis": require_text(content_text(reply), "analysis")}
 
     def write_spec(state: PMState, config: RunnableConfig) -> dict:
         prompt = f"Feature request:\n{state['request']}\n\nAnalysis notes:\n{state['analysis']}"
-        reply = llm.invoke([SystemMessage(PM_SPEC_SYSTEM), HumanMessage(prompt)], config=config)
+        prompt += repo_text(state)
+        reply = llm.invoke(
+            [SystemMessage(system_for(PM_SPEC_SYSTEM, state)), HumanMessage(prompt)], config=config
+        )
         return {"spec": require_text(content_text(reply), "spec")}
 
     graph = StateGraph(PMState)
@@ -48,7 +64,14 @@ def make_product_manager_node(llm):
     subgraph = build_product_manager_graph(llm)
 
     def product_manager_node(state: TeamState, config: RunnableConfig) -> dict:
-        result = subgraph.invoke({"request": state["request"]}, config)
+        result = subgraph.invoke(
+            {
+                "request": state["request"],
+                "repo_mode": state.get("repo_mode", ""),
+                "repo_summary": state.get("repo_summary", ""),
+            },
+            config,
+        )
         return {
             "spec": result["spec"],
             "history": [make_event(NAME, "spec_written", f"{len(result['spec'])} chars")],

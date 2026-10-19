@@ -26,7 +26,7 @@ PRICES: dict[str, tuple[float, float]] = {
     "openai/gpt-oss-20b": (0.075, 0.30),
 }
 
-AGENT_ORDER = ("supervisor", "product_manager", "developer", "reviewer")
+AGENT_ORDER = ("repo_analyst", "supervisor", "product_manager", "developer", "reviewer")
 
 # Community-maintained price list (the LiteLLM project). Not Groq's official page.
 PRICE_LIST_URL = (

@@ -16,6 +16,7 @@ Built with **LangGraph** and **Groq**. A supervisor coordinates three agents wit
 - **Review loop:** the Reviewer can send code back to the Developer, up to a maximum number of attempts.
 - **Token and cost tracking:** input, output and thinking tokens and cost per agent. Model prices are looked up online (cached) with a built-in fallback.
 - **Run traces:** full runs in LangSmith (optional).
+- **GitHub repo mode:** connect GitHub, pick a repo, and the team reads it (or builds in an empty one), then you preview the file changes and open a pull request.
 - **Web UI:** a Streamlit app with live agent progress, results and a usage breakdown.
 
 ## How it works
@@ -71,12 +72,18 @@ main.py              # CLI
 software_team/
   graph.py           # supervisor graph
   supervisor.py      # routing + guardrail
-  agents/            # product_manager, developer, reviewer sub-graphs
+  agents/            # product_manager, developer, reviewer, repo_analyst sub-graphs
+  github_client.py   # GitHub API + login helpers
+  repo_context.py    # reads a repo into limited context, parses file changes
   tracking.py        # tokens and cost per agent
   observability.py   # LangSmith setup
   config.py  llm.py  state.py  prompts.py
 tests/               # offline tests with a fake LLM
 ```
+
+## GitHub repo mode
+
+Register a GitHub App (Contents and Pull requests: read & write), set its callback URL to your app's address, and put `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_SLUG` and `APP_URL` in `.env` (see `.env.example`). Changes always go to a new branch as a pull request; nothing touches the main branch except the first commit of an empty repo. Generated code is never run.
 
 ## Deploy (free)
 

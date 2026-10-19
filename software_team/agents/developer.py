@@ -14,7 +14,14 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from ..llm import content_text, require_text
-from ..prompts import DEV_CODE_SYSTEM, DEV_PLAN_SYSTEM, DEV_REVISE_SYSTEM
+from ..prompts import (
+    DEV_CODE_SYSTEM,
+    DEV_PLAN_SYSTEM,
+    DEV_REVISE_SYSTEM,
+    REPO_DEV_EMPTY,
+    REPO_DEV_EXISTING,
+)
+from ..repo_context import repo_block
 from ..state import TeamState, make_event
 
 NAME = "developer"
@@ -27,21 +34,40 @@ class DevState(TypedDict, total=False):
     code: str
     previous_code: str  # only set when this is a revision
     feedback: str  # the reviewer's text; only set when this is a revision
+    repo_mode: str  # repo mode only
+    repo_summary: str
+    repo_files: dict
 
 
 def build_developer_graph(llm):
+    def repo_text(state: DevState) -> str:  # "" in Quick mode
+        return repo_block(
+            state.get("repo_mode", ""), state.get("repo_summary", ""), state.get("repo_files")
+        )
+
+    def system_for(base: str, state: DevState) -> str:
+        """In repo mode the answer must be file blocks that can be committed."""
+        mode = state.get("repo_mode", "")
+        if mode == "existing":
+            return base + REPO_DEV_EXISTING
+        return base + REPO_DEV_EMPTY if mode == "empty" else base
+
     def route_start(state: DevState) -> str:
         return "revise" if state.get("feedback") else "plan"
 
     def plan(state: DevState, config: RunnableConfig) -> dict:
         reply = llm.invoke(
-            [SystemMessage(DEV_PLAN_SYSTEM), HumanMessage(state["spec"])], config=config
+            [SystemMessage(DEV_PLAN_SYSTEM), HumanMessage(state["spec"] + repo_text(state))],
+            config=config,
         )
         return {"plan": require_text(content_text(reply), "implementation plan")}
 
     def implement(state: DevState, config: RunnableConfig) -> dict:
         prompt = f"Specification:\n{state['spec']}\n\nImplementation plan:\n{state['plan']}"
-        reply = llm.invoke([SystemMessage(DEV_CODE_SYSTEM), HumanMessage(prompt)], config=config)
+        prompt += repo_text(state)
+        reply = llm.invoke(
+            [SystemMessage(system_for(DEV_CODE_SYSTEM, state)), HumanMessage(prompt)], config=config
+        )
         return {"code": require_text(content_text(reply), "code")}
 
     def revise(state: DevState, config: RunnableConfig) -> dict:
@@ -49,8 +75,11 @@ def build_developer_graph(llm):
             f"Specification:\n{state['spec']}\n\n"
             f"Your previous code:\n{state['previous_code']}\n\n"
             f"Reviewer feedback:\n{state['feedback']}"
+        ) + repo_text(state)
+        reply = llm.invoke(
+            [SystemMessage(system_for(DEV_REVISE_SYSTEM, state)), HumanMessage(prompt)],
+            config=config,
         )
-        reply = llm.invoke([SystemMessage(DEV_REVISE_SYSTEM), HumanMessage(prompt)], config=config)
         return {"code": require_text(content_text(reply), "revised code")}
 
     graph = StateGraph(DevState)
@@ -69,7 +98,13 @@ def make_developer_node(llm):
 
     def developer_node(state: TeamState, config: RunnableConfig) -> dict:
         iteration = state.get("iteration", 0) + 1
-        sub_input = {"request": state["request"], "spec": state["spec"]}
+        sub_input = {
+            "request": state["request"],
+            "spec": state["spec"],
+            "repo_mode": state.get("repo_mode", ""),
+            "repo_summary": state.get("repo_summary", ""),
+            "repo_files": state.get("repo_files", {}),
+        }
 
         # A non-empty review next to existing code means: the reviewer sent it back.
         is_revision = bool(state.get("review") and state.get("code"))

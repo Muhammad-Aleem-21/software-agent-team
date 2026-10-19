@@ -13,7 +13,8 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
 from ..llm import content_text, require_text
-from ..prompts import REVIEW_SYSTEM
+from ..prompts import REPO_REVIEW_NOTE, REVIEW_SYSTEM
+from ..repo_context import parse_changes, repo_block
 from ..state import TeamState, make_event
 
 NAME = "reviewer"
@@ -37,13 +38,22 @@ class ReviewState(TypedDict, total=False):
     code: str
     review: str
     verdict: str
+    repo_mode: str  # repo mode only
+    repo_summary: str
+    repo_files: dict
 
 
 def build_reviewer_graph(llm):
     def review(state: ReviewState, config: RunnableConfig) -> dict:
         prompt = f"Specification:\n{state['spec']}\n\nCode to review:\n{state['code']}"
-        reply = llm.invoke([SystemMessage(REVIEW_SYSTEM), HumanMessage(prompt)], config=config)
-        #print("DEBUG:", reply.response_metadata, reply.additional_kwargs)
+        system = REVIEW_SYSTEM
+        mode = state.get("repo_mode", "")
+        if mode:  # repo mode: also show the original versions of the files that were changed
+            system += REPO_REVIEW_NOTE
+            changed = {c["path"] for c in parse_changes(state["code"])}
+            originals = {p: t for p, t in state.get("repo_files", {}).items() if p in changed}
+            prompt += repo_block(mode, state.get("repo_summary", ""), originals)
+        reply = llm.invoke([SystemMessage(system), HumanMessage(prompt)], config=config)
         return {"review": require_text(content_text(reply), "review")}
 
     def decide(state: ReviewState) -> dict:
@@ -62,7 +72,16 @@ def make_reviewer_node(llm):
     subgraph = build_reviewer_graph(llm)
 
     def reviewer_node(state: TeamState, config: RunnableConfig) -> dict:
-        result = subgraph.invoke({"spec": state["spec"], "code": state["code"]}, config)
+        result = subgraph.invoke(
+            {
+                "spec": state["spec"],
+                "code": state["code"],
+                "repo_mode": state.get("repo_mode", ""),
+                "repo_summary": state.get("repo_summary", ""),
+                "repo_files": state.get("repo_files", {}),
+            },
+            config,
+        )
         iteration = state.get("iteration", 1)
         return {
             "review": result["review"],

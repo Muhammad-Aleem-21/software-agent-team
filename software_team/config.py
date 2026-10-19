@@ -18,7 +18,7 @@ DEFAULT_MAX_ITERATIONS = 3
 
 # Every agent that can call an LLM. Each one may use its own model
 # (see the *_MODEL variables in .env.example).
-AGENT_NAMES = ("supervisor", "product_manager", "developer", "reviewer")
+AGENT_NAMES = ("supervisor", "product_manager", "developer", "reviewer", "repo_analyst")
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,14 @@ class Settings:
     reasoning_effort: str = ""  # "low" / "medium" / "high"; empty = don't send it
     max_iterations: int = DEFAULT_MAX_ITERATIONS  # max versions the Developer may write
     price_lookup: bool = True  # look model prices up online (cached); False = built-in table only
+    # --- GitHub repo mode (all optional; Quick mode needs none of this) ---
+    repo_max_files: int = 8  # most files the Repo Analyst may read
+    repo_max_file_chars: int = 8000  # each file is cut to this many characters
+    repo_max_context_chars: int = 24000  # total characters of repo code sent to the agents
+    github_client_id: str = ""  # GitHub App client id ("Login with GitHub")
+    github_client_secret: str = ""
+    github_app_slug: str = ""  # the app's URL name, used for the "install on more repos" link
+    app_url: str = "http://localhost:8501"  # this app's public address = the GitHub callback URL
 
 
 def get_settings() -> Settings:
@@ -49,4 +57,11 @@ def get_settings() -> Settings:
         reasoning_effort=os.getenv("REASONING_EFFORT", "low").strip().lower(),
         max_iterations=max(1, int(os.getenv("MAX_ITERATIONS", str(DEFAULT_MAX_ITERATIONS)))),
         price_lookup=os.getenv("PRICE_LOOKUP", "on").strip().lower() not in ("off", "false", "0", "no"),
+        repo_max_files=max(1, int(os.getenv("REPO_MAX_FILES", "8"))),
+        repo_max_file_chars=max(500, int(os.getenv("REPO_MAX_FILE_CHARS", "8000"))),
+        repo_max_context_chars=max(2000, int(os.getenv("REPO_MAX_CONTEXT_CHARS", "24000"))),
+        github_client_id=os.getenv("GITHUB_CLIENT_ID", "").strip(),
+        github_client_secret=os.getenv("GITHUB_CLIENT_SECRET", "").strip(),
+        github_app_slug=os.getenv("GITHUB_APP_SLUG", "").strip(),
+        app_url=os.getenv("APP_URL", "http://localhost:8501").strip().rstrip("/"),
     )
