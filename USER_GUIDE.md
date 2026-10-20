@@ -38,9 +38,9 @@ Use this to improve an existing repository, or to build a new project inside an 
 
 ### Step 1: Connect GitHub
 1. In the sidebar, set **Mode** to **GitHub repo**.
-2. Click **Connect GitHub**.
+2. Click **Connect GitHub**. GitHub opens in a **new tab**.
 3. GitHub asks you to approve the app. Click **Authorize**.
-4. You come back to the app and see *Connected to GitHub as your-username*.
+4. That tab returns to the app and shows *Connected to GitHub as your-username*. Continue there and close the old tab.
 
 ### Step 2: Let the app see your repo (first time only)
 The app can only see repositories you have installed it on.

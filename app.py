@@ -139,7 +139,9 @@
 #         return None
 
 #     empty = not branches
-#     can_push = bool(token) and bool(info.get("permissions", {}).get("push"))
+#     # GitHub App tokens often don't report "permissions"; only block when it says push is False.
+#     perms = info.get("permissions")
+#     can_push = bool(token) and (perms is None or bool(perms.get("push")))
 #     if empty:
 #         st.caption("This repository is empty: the team will create all the files from your request.")
 #         branch = info.get("default_branch", "main")
@@ -352,7 +354,12 @@
 #             except GitHubError as exc:
 #                 st.error(str(exc))
 #     if not ready:
-#         st.caption("Connect GitHub with write access to the repo and tick at least one file to publish.")
+#         why = (
+#             "Connect GitHub first (button at the top)." if not token
+#             else "Tick at least one file above." if not chosen
+#             else "GitHub says you can't push to this repo."
+#         )
+#         st.caption(f"Button is disabled: {why}")
 
 
 # # ---------------------------------------------------------------- results
@@ -523,8 +530,9 @@ def github_panel() -> dict | None:
             )
             st.markdown(github_button_html(url), unsafe_allow_html=True)
             st.caption(
-                "Connect to pick your own repos and to open pull requests. "
-                "Without it you can still read a public repo, but not publish."
+                "GitHub opens in a new tab. After you approve, continue in that new tab "
+                "(you can close this one). Without connecting you can still read a public repo, "
+                "but not publish."
             )
         else:
             st.info(
