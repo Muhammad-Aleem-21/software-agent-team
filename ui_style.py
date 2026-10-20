@@ -129,4 +129,4 @@ def verdict_html(ok: bool, text: str) -> str:
 
 
 def github_button_html(url: str) -> str:
-    return f'<a class="ghbtn" href="{escape(url, quote=True)}" target="_self">🔗 Connect GitHub</a>'
+    return f'<a class="ghbtn" href="{escape(url, quote=True)}" target="_top">🔗 Connect GitHub</a>'
