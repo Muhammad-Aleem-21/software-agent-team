@@ -43,11 +43,27 @@ class Settings:
     # --- accounts and saved history ---
     database_url: str = ""  # hosted Postgres link; empty = a local SQLite file (.cache/history.db)
     session_secret: str = ""  # signs the "stay signed in" cookie; falls back to the GitHub secret
+    # --- usage limits (per signed-in user, per UTC day; 0 = no limit) ---
+    daily_run_limit: int = 10
+    daily_cost_limit_usd: float = 0.0
+    # --- checking the generated code: "off" | "syntax" (never executes anything) | "run" ---
+    code_check: str = "syntax"
+
+
+def _code_check_mode(app_url: str) -> str:
+    """CODE_CHECK=off|syntax|run. Default: run on a local machine, syntax-only when hosted,
+    because running AI-written code on a public server needs a real sandbox."""
+    value = os.getenv("CODE_CHECK", "").strip().lower()
+    if value in ("off", "syntax", "run"):
+        return value
+    local = app_url.startswith("http://localhost") or app_url.startswith("http://127.0.0.1")
+    return "run" if local else "syntax"
 
 
 def get_settings() -> Settings:
     """Read settings from the environment (not cached, so tests can override it)."""
     default_model = os.getenv("MODEL_NAME", DEFAULT_MODEL)
+    app_url = os.getenv("APP_URL", "http://localhost:8501").strip().rstrip("/")
     return Settings(
         groq_api_key=os.getenv("GROQ_API_KEY"),
         model_name=default_model,
@@ -66,7 +82,10 @@ def get_settings() -> Settings:
         github_client_id=os.getenv("GITHUB_CLIENT_ID", "").strip(),
         github_client_secret=os.getenv("GITHUB_CLIENT_SECRET", "").strip(),
         github_app_slug=os.getenv("GITHUB_APP_SLUG", "").strip(),
-        app_url=os.getenv("APP_URL", "http://localhost:8501").strip().rstrip("/"),
+        app_url=app_url,
         database_url=os.getenv("DATABASE_URL", "").strip(),
         session_secret=os.getenv("SESSION_SECRET", "").strip(),
+        daily_run_limit=max(0, int(os.getenv("DAILY_RUN_LIMIT", "10"))),
+        daily_cost_limit_usd=max(0.0, float(os.getenv("DAILY_COST_LIMIT_USD", "0"))),
+        code_check=_code_check_mode(app_url),
     )

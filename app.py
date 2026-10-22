@@ -17,6 +17,7 @@ import streamlit.components.v1 as components
 from main import describe_outcome, format_event
 from software_team import auth, db
 from software_team.config import get_settings
+from software_team.followup import build_followup, short_label
 from software_team.github_client import (
     GitHubClient,
     GitHubError,
@@ -341,6 +342,18 @@ if LOGIN_ON and not user:  # sign-in page: nothing else is shown until the user 
         st.error(st.session_state["gh_error"])
     st.stop()
 
+quota = {"runs": 0, "cost_usd": 0.0}
+limit_msg = ""  # set when today's limit is used up; blocks the Run buttons
+if user and DB_OK:
+    try:
+        quota = db.usage_today(user["id"])
+    except Exception:
+        pass  # can't read the counter: don't block people because of it
+    if settings.daily_run_limit and quota["runs"] >= settings.daily_run_limit:
+        limit_msg = f"You have used all {settings.daily_run_limit} runs for today. The limit resets at 00:00 UTC."
+    elif settings.daily_cost_limit_usd and quota["cost_usd"] >= settings.daily_cost_limit_usd:
+        limit_msg = f"You have reached today's spending limit (${settings.daily_cost_limit_usd:g}). It resets at 00:00 UTC."
+
 page = NEW_RUN
 with st.sidebar:
     if user:
@@ -363,6 +376,14 @@ with st.sidebar:
             st.caption("History is off: the database is not available.")
             with st.expander("Details"):
                 st.code(DB_ERROR)
+        if DB_OK and (settings.daily_run_limit or settings.daily_cost_limit_usd):
+            if settings.daily_run_limit:
+                st.progress(
+                    min(1.0, quota["runs"] / settings.daily_run_limit),
+                    text=f"Runs today: {quota['runs']} / {settings.daily_run_limit}",
+                )
+            if settings.daily_cost_limit_usd:
+                st.caption(f"Spent today: ${quota['cost_usd']:.4f} of ${settings.daily_cost_limit_usd:g}")
         if st.session_state.get("db_warn"):
             st.warning(st.session_state["db_warn"])
         st.divider()
@@ -373,6 +394,8 @@ with st.sidebar:
         help="How many times the Reviewer may send the code back to the Developer.",
     )
     st.caption(f"Model: `{settings.model_name}`")
+    st.caption({"off": "Code check: off", "syntax": "Code check: syntax only",
+                "run": "Code check: runs the code"}[settings.code_check])
     st.caption("Tracing: " + ("on (LangSmith)" if tracing_enabled() else "off"))
     if mode_choice == REPO:
         st.caption("In repo mode the files the team reads are sent to Groq.")
@@ -431,11 +454,20 @@ request = st.text_area(
 )
 run = st.button(
     "Run the team", type="primary",
-    disabled=not request.strip() or (mode_choice == REPO and target is None),
+    disabled=not request.strip() or (mode_choice == REPO and target is None) or bool(limit_msg),
 )
+if limit_msg:
+    st.warning(limit_msg)
 
 # ---------------------------------------------------------------- run
+queued = st.session_state.pop("queued", None)
+job = None  # (full request text for the team, short text shown to people)
 if run:
+    job = (request.strip(), request.strip())
+elif queued and not limit_msg:
+    job = (queued["full"], queued["short"])
+
+if job:
     for key in ("result", "error", "publish"):
         st.session_state.pop(key, None)
     clear_file_ticks()
@@ -463,13 +495,20 @@ if run:
         )
         log_box.code("\n".join(live["lines"]), language=None)
 
+    counted = False
     try:
         outcome = run_team_live(
-            request.strip(), max_iterations, on_event, target if mode_choice == REPO else None
+            job[0], max_iterations, on_event, target if mode_choice == REPO else None
         )
+        outcome["request"] = job[1]
         if user and DB_OK:
             try:
-                outcome["run_id"] = db.save_run(user["id"], request.strip(), outcome)
+                db.add_usage(user["id"], outcome["usage"]["total"].get("cost_usd"))
+                counted = True
+            except Exception:
+                pass
+            try:
+                outcome["run_id"] = db.save_run(user["id"], job[1], outcome)
             except Exception as exc:  # the run itself succeeded; only the history failed
                 st.warning(f"This run could not be saved to your history: {exc}")
         st.session_state["result"] = outcome
@@ -483,6 +522,8 @@ if run:
     except Exception as exc:  # missing key, API error, GitHub error, cut-off output, ...
         st.session_state["error"] = str(exc)
         pipe.empty()
+    if counted and "error" not in st.session_state:
+        st.rerun()  # refreshes the sidebar counter; the result is kept in session state
 
 if "error" in st.session_state:
     st.error(st.session_state["error"])
@@ -525,7 +566,8 @@ def show_changes(state: dict, repo_info: dict) -> None:
         st.link_button(label, publish["url"])
         return
 
-    title = st.text_input("Title", value=f"AI Team: {state['request'][:60]}")
+    label = st.session_state.get("result", {}).get("request") or state["request"]
+    title = st.text_input("Title", value=f"AI Team: {label[:60]}")
     action = "Commit to the repository" if repo_info["empty"] else "Create pull request"
     if repo_info["empty"]:
         st.caption("The repo is empty, so the first files are committed straight to its default branch.")
@@ -533,9 +575,10 @@ def show_changes(state: dict, repo_info: dict) -> None:
     ready = bool(chosen) and bool(token) and repo_info["can_push"]
     if st.button(action, type="primary", disabled=not ready):
         body = (
-            f"Generated by AI Software Team.\n\n**Request:** {state['request']}\n\n"
+            f"Generated by AI Software Team.\n\n**Request:** {label}\n\n"
             f"**Reviewer verdict:** {state['verdict']} ({describe_outcome(state)})\n\n"
-            "The code was not run or tested. Please review carefully before merging."
+            f"Automatic code check: {state.get('check_status') or 'not done'}. "
+            "Please review carefully and test before merging."
         )
         with st.spinner("Writing to GitHub..."):
             try:
@@ -614,6 +657,11 @@ if result:
         st.markdown(state["spec"])
 
     with tab_review:
+        status = state.get("check_status")
+        if status and status != "skipped" or state.get("check_report"):
+            icon = {"passed": "✅", "failed": "❌", "inconclusive": "⚠️"}.get(status, "ℹ️")
+            with st.expander(f"{icon} Automatic code check: {status}", expanded=status == "failed"):
+                st.code(state.get("check_report") or "(no output)", language=None)
         st.markdown(state["review"])
 
     with tab_usage:
@@ -642,3 +690,29 @@ if result:
     with tab_log:
         for event in state["history"]:
             st.text(format_event(event))
+
+    # ---- follow-up: continue from this result instead of starting over
+    def queue_followup(earlier: str) -> None:
+        text = st.session_state.get("followup_text", "").strip()
+        if text:
+            st.session_state["queued"] = {
+                "full": build_followup(earlier, state, text),
+                "short": short_label(text),
+            }
+            st.session_state["followup_text"] = ""
+
+    st.divider()
+    st.subheader("Ask for a change")
+    st.caption("The team continues from the result above instead of starting over. This counts as a new run.")
+    earlier_label = result.get("request") or state["request"]
+    follow_ok = (not repo_info) or (mode_choice == REPO and target is not None)
+    st.text_area(
+        "Follow-up request", key="followup_text", height=90,
+        placeholder="e.g. Also add input validation, or: rename the function and add a docstring",
+    )
+    st.button(
+        "Run follow-up", type="primary", on_click=queue_followup, args=(earlier_label,),
+        disabled=not follow_ok or bool(limit_msg),
+    )
+    if repo_info and not follow_ok:
+        st.caption("Select the same repository above (Mode: GitHub repo) to continue this run.")

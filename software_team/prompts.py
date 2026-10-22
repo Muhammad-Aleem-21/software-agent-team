@@ -109,3 +109,7 @@ REPO_REVIEW_NOTE = """
 The code is a set of file changes to a GitHub repository (blocks of "=== FILE: path ==="). Each block is the COMPLETE new content of that file.
 Check that the changes fit the existing repository (when its summary and original files are shown), do not break existing behaviour,
 and that every file the change depends on exists."""
+
+
+CHECK_NOTE = """
+An automatic check of the code (syntax and, if available, a real run or its tests) is included below the code. Treat a failed check as a real bug and describe it in Issues. A check marked inconclusive only means it could not be run here; judge the code yourself."""

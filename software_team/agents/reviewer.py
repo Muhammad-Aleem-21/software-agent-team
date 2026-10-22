@@ -12,9 +12,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
+from ..config import get_settings
 from ..llm import content_text, require_text
-from ..prompts import REPO_REVIEW_NOTE, REVIEW_SYSTEM
+from ..prompts import CHECK_NOTE, REPO_REVIEW_NOTE, REVIEW_SYSTEM
 from ..repo_context import parse_changes, repo_block
+from ..sandbox import check_code
 from ..state import TeamState, make_event
 
 NAME = "reviewer"
@@ -41,12 +43,17 @@ class ReviewState(TypedDict, total=False):
     repo_mode: str  # repo mode only
     repo_summary: str
     repo_files: dict
+    check_status: str
+    check_report: str
 
 
 def build_reviewer_graph(llm):
     def review(state: ReviewState, config: RunnableConfig) -> dict:
         prompt = f"Specification:\n{state['spec']}\n\nCode to review:\n{state['code']}"
         system = REVIEW_SYSTEM
+        if state.get("check_report"):
+            prompt += f"\n\nAutomatic check of the code ({state.get('check_status')}):\n{state['check_report']}"
+            prompt += CHECK_NOTE
         mode = state.get("repo_mode", "")
         if mode:  # repo mode: also show the original versions of the files that were changed
             system += REPO_REVIEW_NOTE
@@ -72,8 +79,14 @@ def make_reviewer_node(llm):
     subgraph = build_reviewer_graph(llm)
 
     def reviewer_node(state: TeamState, config: RunnableConfig) -> dict:
+        check = check_code(
+            state["code"], state.get("repo_mode", ""), get_settings().code_check,
+            state.get("repo_files", {}),
+        )
         result = subgraph.invoke(
             {
+                "check_status": check["status"],
+                "check_report": check["report"],
                 "spec": state["spec"],
                 "code": state["code"],
                 "repo_mode": state.get("repo_mode", ""),
@@ -83,20 +96,27 @@ def make_reviewer_node(llm):
             config,
         )
         iteration = state.get("iteration", 1)
+        review_text, verdict = result["review"], result["verdict"]
+        if check["status"] == "failed":  # code that does not run is never approved
+            verdict = "changes_requested"
+            review_text = f"## Automatic code check: FAILED\n```\n{check['report']}\n```\n\n{review_text}"
+            review_text = _VERDICT_RE.sub("VERDICT: CHANGES_REQUESTED", review_text)
         return {
-            "review": result["review"],
-            "verdict": result["verdict"],
+            "review": review_text,
+            "verdict": verdict,
+            "check_status": check["status"],
+            "check_report": check["report"],
             "versions": [
                 {
                     "kind": "review",
                     "iteration": iteration,
-                    "verdict": result["verdict"],
-                    "text": result["review"],
+                    "verdict": verdict,
+                    "text": review_text,
                 }
             ],
             "history": [
                 make_event(
-                    NAME, "review_written", f"attempt {iteration}, verdict={result['verdict']}"
+                    NAME, "review_written", f"attempt {iteration}, verdict={verdict}, check={check['status']}"
                 )
             ],
         }

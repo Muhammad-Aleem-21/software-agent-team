@@ -18,6 +18,8 @@ class TeamState(TypedDict, total=False):
     iteration: int  # how many times the Developer has written code so far
     max_iterations: int  # the cap: the Developer never writes more versions than this
     outcome: str  # set when the run ends: "approved" | "max_iterations_reached"
+    check_status: str  # automatic code check: "" | skipped | passed | failed | inconclusive
+    check_report: str  # what the check printed
     # GitHub repo mode only (all empty in Quick mode):
     repo_mode: str  # "" = Quick mode | "existing" = improve a repo | "empty" = build in an empty repo
     repo_summary: str  # written by the Repo Analyst
@@ -41,6 +43,8 @@ def initial_state(
         "iteration": 0,
         "max_iterations": max_iterations,
         "outcome": "",
+        "check_status": "",
+        "check_report": "",
         "repo_mode": repo_mode,
         "repo_summary": "",
         "repo_files": {},

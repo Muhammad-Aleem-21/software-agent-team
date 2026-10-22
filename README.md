@@ -17,6 +17,9 @@ Built with **LangGraph** and **Groq**. A supervisor coordinates three agents wit
 - **Token and cost tracking:** input, output and thinking tokens and cost per agent. Model prices are looked up online (cached) with a built-in fallback.
 - **Run traces:** full runs in LangSmith (optional).
 - **GitHub repo mode:** connect GitHub, pick a repo, and the team reads it (or builds in an empty one), then you preview the file changes and open a pull request.
+- **Code check:** before review, Python is parsed and (optionally) run with its tests; failures go back to the Developer.
+- **Follow-ups:** ask for a change on a finished result and the team continues from it.
+- **Daily limits:** per-user caps on runs (and optionally cost), shown in the sidebar.
 - **Web UI:** a Streamlit app with live agent progress, results and a usage breakdown.
 
 ## How it works
@@ -79,6 +82,8 @@ software_team/
   repo_context.py    # reads a repo into limited context, parses file changes
   tracking.py        # tokens and cost per agent
   observability.py   # LangSmith setup
+  sandbox.py         # syntax check / limited run of the generated code
+  followup.py        # builds a follow-up request from an earlier result
   config.py  llm.py  state.py  prompts.py
 tests/               # offline tests with a fake LLM
 ```
@@ -97,7 +102,15 @@ Set `MODEL_NAME` (or `DEVELOPER_MODEL`, `REVIEWER_MODEL`, ... per agent). No pre
 
 ## GitHub repo mode
 
-Register a GitHub App (Contents and Pull requests: read & write), set its callback URL to your app's address, and put `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_SLUG` and `APP_URL` in `.env` (see `.env.example`). Changes always go to a new branch as a pull request; nothing touches the main branch except the first commit of an empty repo. Generated code is never run.
+Register a GitHub App (Contents and Pull requests: read & write), set its callback URL to your app's address, and put `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_APP_SLUG` and `APP_URL` in `.env` (see `.env.example`). Changes always go to a new branch as a pull request; nothing touches the main branch except the first commit of an empty repo. 
+
+## Usage limits
+
+Signed-in users get `DAILY_RUN_LIMIT` runs per UTC day (default 10, `0` = unlimited) and optionally `DAILY_COST_LIMIT_USD`. Counters live in the `usage` table, so deleting runs does not refund them. Limits need the database; guests have none.
+
+## Code check
+
+`CODE_CHECK` is `off`, `syntax` or `run`. `syntax` parses the Python and never executes it. `run` also executes the code (or its tests, if present) in a child process with a 15 s timeout, CPU/memory/file limits, an empty environment and a temp folder. It is **not a full sandbox** (the code can still read files the server can read, and use the network), so it defaults to `run` only on localhost and `syntax` when hosted. For a public app, run it inside a container or an external sandbox service first.
 
 ## Deploy (free)
 
@@ -105,6 +118,7 @@ Deploy on **Streamlit Community Cloud**: push to GitHub, create an app with `app
 
 ## Roadmap
 
-- Per-user limits and usage billing
+- Usage billing
 - Bring your own API key
-- More agents (tester, security reviewer)
+- A real isolated sandbox for hosted runs
+- More agents (security reviewer)

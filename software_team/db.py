@@ -66,6 +66,16 @@ runs = Table(
     Column("publish_url", Text),
 )
 
+# Daily counters. Kept separately from `runs` so deleting a run does not give the quota back.
+usage = Table(
+    "usage",
+    metadata,
+    Column("user_id", BigInteger, primary_key=True, autoincrement=False),
+    Column("day", String(10), primary_key=True),  # UTC date, YYYY-MM-DD
+    Column("runs", Integer, nullable=False, default=0),
+    Column("cost_usd", Float, nullable=False, default=0.0),
+)
+
 _engine: Engine | None = None
 
 
@@ -148,6 +158,7 @@ def save_run(user_id: int, request: str, result: dict[str, Any]) -> str:
     mode = "quick" if not repo else ("empty" if repo["empty"] else "existing")
     run_id = uuid.uuid4().hex
     payload = {k: result[k] for k in ("state", "usage", "seconds", "repo")}
+    payload["request"] = request  # the short text people typed (state["request"] can be longer)
     with _eng().begin() as conn:
         conn.execute(
             insert(runs).values(
@@ -207,6 +218,40 @@ def set_publish(user_id: int, run_id: str, publish: dict[str, Any]) -> None:
             .where(runs.c.id == run_id, runs.c.user_id == user_id)
             .values(publish_kind=publish.get("kind"), publish_url=publish.get("url"))
         )
+
+
+def _today() -> str:
+    return _now().strftime("%Y-%m-%d")
+
+
+def usage_today(user_id: int) -> dict[str, float]:
+    """{'runs': n, 'cost_usd': x} for this user since 00:00 UTC."""
+    with _eng().connect() as conn:
+        row = conn.execute(
+            select(usage.c.runs, usage.c.cost_usd).where(usage.c.user_id == user_id, usage.c.day == _today())
+        ).first()
+    return {"runs": int(row[0]), "cost_usd": float(row[1])} if row else {"runs": 0, "cost_usd": 0.0}
+
+
+def add_usage(user_id: int, cost_usd: float | None) -> None:
+    """Count one finished run (and its cost, if known) against today's quota."""
+    day, cost = _today(), float(cost_usd or 0.0)
+    with _eng().begin() as conn:
+        done = conn.execute(
+            update(usage)
+            .where(usage.c.user_id == user_id, usage.c.day == day)
+            .values(runs=usage.c.runs + 1, cost_usd=usage.c.cost_usd + cost)
+        )
+        if done.rowcount:
+            return
+        try:
+            conn.execute(insert(usage).values(user_id=user_id, day=day, runs=1, cost_usd=cost))
+        except IntegrityError:  # another tab created today's row first
+            conn.execute(
+                update(usage)
+                .where(usage.c.user_id == user_id, usage.c.day == day)
+                .values(runs=usage.c.runs + 1, cost_usd=usage.c.cost_usd + cost)
+            )
 
 
 def delete_run(user_id: int, run_id: str) -> None:

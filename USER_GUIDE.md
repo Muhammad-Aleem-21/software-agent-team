@@ -101,6 +101,18 @@ Every run is saved to your private history.
 
 If you opened a repo run and already published it, the pull request link is kept with the run.
 
+## Ask for a change (follow-up)
+
+Under the results, use **Ask for a change** to say things like "also add input validation". The team continues from the existing spec and code instead of starting over. In repo mode, keep the same repository selected above. A follow-up counts as one run and is saved to your history.
+
+## Daily limit
+
+The sidebar shows **Runs today**. When you reach the daily limit the Run buttons are disabled until 00:00 UTC.
+
+## Automatic code check
+
+Before review, the code is checked. In the **Review** tab you see the result: ✅ passed, ❌ failed (the Developer is sent back to fix it) or ⚠️ inconclusive. On the hosted app this is a syntax check only; the code is not run.
+
 ## Understanding the numbers
 
 After each run you see five cards: **Total cost**, **Input tokens**, **Output tokens**, **LLM calls** and **Time**. The **Tokens & cost** tab breaks them down per agent.
@@ -117,7 +129,7 @@ After each run you see five cards: **Total cost**, **Input tokens**, **Output to
 - **Be specific.** "Add rate limiting of 5 requests per minute to the login route" works much better than "make it secure".
 - **One feature at a time.** Smaller requests give better, easier-to-review changes.
 - **Name the technology** if it matters ("use Flask", "plain HTML and CSS").
-- **Always review the output.** The AI writes and reviews code, but it never runs or tests it. Run it and test it yourself before you rely on it.
+- **Always review the output.** The check is limited (syntax only on the hosted app). Run and test the code yourself before you rely on it.
 
 ---
 
@@ -127,13 +139,13 @@ After each run you see five cards: **Total cost**, **Input tokens**, **Output to
 - **Large files are skipped.** Files above about 8,000 characters aren't sent to the AI, so the team can't edit very large files.
 - **Limited context.** On big repos the team reads only the files it judges most relevant (about 8), so it may miss things elsewhere.
 - **Rate limits.** If you see a "rate limit" message, wait a minute and try again, or try a smaller request.
-- **Free demo.** The AI model runs on the owner's account, so heavy use may be limited.
+- **Free demo.** The AI model runs on the owner's account, so there is a daily run limit per user.
 
 ## Privacy and permissions
 
 - The app asks for access to **Contents** (to read and write files) and **Pull requests** (to open them) on the repositories **you choose**. It cannot see other repos.
 - In repo mode, the files the team reads are sent to the AI provider (Groq) to generate the changes. Don't connect repositories containing secrets or code you aren't allowed to share.
-- **What is saved:** your GitHub name and id, and for each run your request, the generated spec, code, review, file changes (including the original text of the repo files the team read), and the token and cost numbers. Only you can see them.
+- **What is saved:** your GitHub name and id, and for each run your request, the generated spec, code, review, file changes (including the original text of the repo files the team read), and the token and cost numbers. Only you can see them. A small daily counter (user id, date, number of runs, cost) is kept even if you delete your data, so limits can't be reset that way.
 - **What is not saved:** your GitHub login token. It lives only in your browser session.
 - You can delete any run, or all your data, at any time (see *Your history*). Don't connect repositories whose code you are not allowed to store with a third-party service.
 - You can remove access at any time: GitHub → Settings → Applications → Installed GitHub Apps → **Configure** → **Uninstall**.
