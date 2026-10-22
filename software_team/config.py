@@ -40,6 +40,9 @@ class Settings:
     github_client_secret: str = ""
     github_app_slug: str = ""  # the app's URL name, used for the "install on more repos" link
     app_url: str = "http://localhost:8501"  # this app's public address = the GitHub callback URL
+    # --- accounts and saved history ---
+    database_url: str = ""  # hosted Postgres link; empty = a local SQLite file (.cache/history.db)
+    session_secret: str = ""  # signs the "stay signed in" cookie; falls back to the GitHub secret
 
 
 def get_settings() -> Settings:
@@ -64,4 +67,6 @@ def get_settings() -> Settings:
         github_client_secret=os.getenv("GITHUB_CLIENT_SECRET", "").strip(),
         github_app_slug=os.getenv("GITHUB_APP_SLUG", "").strip(),
         app_url=os.getenv("APP_URL", "http://localhost:8501").strip().rstrip("/"),
+        database_url=os.getenv("DATABASE_URL", "").strip(),
+        session_secret=os.getenv("SESSION_SECRET", "").strip(),
     )

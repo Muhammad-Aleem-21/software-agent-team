@@ -129,6 +129,10 @@ class GitHubClient:
     def current_user(self) -> str:
         return self._request("GET", "/user")["login"]
 
+    def get_user(self) -> dict:
+        """The logged-in user: id (never changes), login and avatar_url."""
+        return self._request("GET", "/user")
+
     def list_repos(self, limit: int = 100) -> list[str]:
         """'owner/repo' for every repo the logged-in user gave the app access to."""
         names: list[str] = []

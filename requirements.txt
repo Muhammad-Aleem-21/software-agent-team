@@ -6,3 +6,9 @@ pytest>=8.0
 langsmith
 streamlit>=1.40
 requests>=2.31
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+# Only if you switch provider (uncomment the one you use):
+# langchain-openai
+# langchain-anthropic
+# langchain-google-genai

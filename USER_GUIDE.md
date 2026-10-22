@@ -8,6 +8,14 @@ You don't need to install anything or create any keys.
 
 ---
 
+## First: sign in
+
+1. Open the app and click **Sign in with GitHub**. GitHub opens in a **new tab**.
+2. Click **Authorize**. That tab returns to the app and you are signed in. Continue there and close the old tab.
+3. Your name appears in the left sidebar. Next time you open the app you are usually signed in automatically.
+
+Your account is simply your GitHub login. There is nothing to register or remember.
+
 ## Option 1: Quick mode (just get code)
 
 Use this when you want code from a description and don't need a repository.
@@ -38,9 +46,8 @@ Use this to improve an existing repository, or to build a new project inside an 
 
 ### Step 1: Connect GitHub
 1. In the sidebar, set **Mode** to **GitHub repo**.
-2. Click **Connect GitHub**. GitHub opens in a **new tab**.
-3. GitHub asks you to approve the app. Click **Authorize**.
-4. That tab returns to the app and shows *Connected to GitHub as your-username*. Continue there and close the old tab.
+2. If you see **Connect GitHub**, click it (this happens after a refresh, because the app never stores your GitHub token). GitHub opens in a **new tab** and approves instantly. Continue in that tab.
+3. You should now see *Connected to GitHub as your-username*.
 
 ### Step 2: Let the app see your repo (first time only)
 The app can only see repositories you have installed it on.
@@ -84,6 +91,16 @@ Each file has an **Include in the pull request** tick box. Untick anything you d
 
 ---
 
+## Your history
+
+Every run is saved to your private history.
+
+1. In the sidebar, choose **History**.
+2. Pick a past run and click **Open** to see its code, spec, review, file changes and costs again.
+3. Click **Delete this run** to remove one, or open **Your data** in the sidebar and click **Delete my data** to remove everything, including your account record.
+
+If you opened a repo run and already published it, the pull request link is kept with the run.
+
 ## Understanding the numbers
 
 After each run you see five cards: **Total cost**, **Input tokens**, **Output tokens**, **LLM calls** and **Time**. The **Tokens & cost** tab breaks them down per agent.
@@ -106,7 +123,7 @@ After each run you see five cards: **Total cost**, **Input tokens**, **Output to
 
 ## Good to know
 
-- **Your login lasts for the session.** If you refresh or close the page, click **Connect GitHub** again. It takes a few seconds.
+- **Staying signed in.** The app remembers you for about 30 days using a small cookie, but some browsers (Safari especially) block it, so you may have to sign in again. Reading or publishing to a repo after a refresh needs **Connect GitHub** once more.
 - **Large files are skipped.** Files above about 8,000 characters aren't sent to the AI, so the team can't edit very large files.
 - **Limited context.** On big repos the team reads only the files it judges most relevant (about 8), so it may miss things elsewhere.
 - **Rate limits.** If you see a "rate limit" message, wait a minute and try again, or try a smaller request.
@@ -116,7 +133,9 @@ After each run you see five cards: **Total cost**, **Input tokens**, **Output to
 
 - The app asks for access to **Contents** (to read and write files) and **Pull requests** (to open them) on the repositories **you choose**. It cannot see other repos.
 - In repo mode, the files the team reads are sent to the AI provider (Groq) to generate the changes. Don't connect repositories containing secrets or code you aren't allowed to share.
-- The app does not store your code or your GitHub token. The token is kept only in your browser session.
+- **What is saved:** your GitHub name and id, and for each run your request, the generated spec, code, review, file changes (including the original text of the repo files the team read), and the token and cost numbers. Only you can see them.
+- **What is not saved:** your GitHub login token. It lives only in your browser session.
+- You can delete any run, or all your data, at any time (see *Your history*). Don't connect repositories whose code you are not allowed to store with a third-party service.
 - You can remove access at any time: GitHub → Settings → Applications → Installed GitHub Apps → **Configure** → **Uninstall**.
 
 ## Troubleshooting
@@ -127,6 +146,8 @@ After each run you see five cards: **Total cost**, **Input tokens**, **Output to
 | "Not found or no access" | The app isn't installed on that repo, or the link is wrong. |
 | "Button is disabled" under Create pull request | Connect GitHub, tick at least one file, and check the app is installed on the repo. |
 | "GitHub says the login expired" | Click **Connect GitHub** again. |
+| I'm asked to sign in again after a refresh | Your browser blocked the cookie. Just sign in again; your history is kept. |
+| My history is empty | Runs are saved after they finish. If you see "History is off", the app's database is unavailable. |
 | Rate limit or "request too large" error | Try a smaller request or a smaller repo, and wait a minute. |
 | Changes tab says no recognizable files | Run again, or make the request more specific. |
 | The result looks wrong | Read the **Review** tab, increase **Max developer attempts**, and rerun with a clearer request. |

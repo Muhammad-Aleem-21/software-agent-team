@@ -74,12 +74,26 @@ software_team/
   supervisor.py      # routing + guardrail
   agents/            # product_manager, developer, reviewer, repo_analyst sub-graphs
   github_client.py   # GitHub API + login helpers
+  db.py              # users and saved run history (SQLAlchemy)
+  auth.py            # signed "stay signed in" cookie
   repo_context.py    # reads a repo into limited context, parses file changes
   tracking.py        # tokens and cost per agent
   observability.py   # LangSmith setup
   config.py  llm.py  state.py  prompts.py
 tests/               # offline tests with a fake LLM
 ```
+
+## Accounts and history
+
+The GitHub login is the account. Each run is saved per user in a database (`software_team/db.py`), and the sidebar has a **History** page to reopen or delete runs, plus **Delete my data**. A signed cookie (`software_team/auth.py`) keeps users signed in; it holds only the GitHub user id, never a token.
+
+- **Production:** create a free Postgres database (Supabase or Neon) and set `DATABASE_URL` to its pooler link. Set `SESSION_SECRET` to a long random string.
+- **Local development:** leave `DATABASE_URL` empty and a SQLite file (`.cache/history.db`) is used.
+- If GitHub login is not configured (`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` empty), the app runs in guest mode with no sign-in and no history.
+
+## Changing the model or provider
+
+Set `MODEL_NAME` (or `DEVELOPER_MODEL`, `REVIEWER_MODEL`, ... per agent). No prefix means Groq. For other providers use `openai:gpt-4o`, `anthropic:claude-sonnet-4-5` or `google:gemini-2.5-flash`, add the matching key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) and install its package (`langchain-openai`, `langchain-anthropic`, `langchain-google-genai`). Leave `REASONING_EFFORT` empty for models that don't support it.
 
 ## GitHub repo mode
 
@@ -91,6 +105,6 @@ Deploy on **Streamlit Community Cloud**: push to GitHub, create an app with `app
 
 ## Roadmap
 
-- Saved run history (database) and a History tab
-- User accounts, per-user limits and usage billing
+- Per-user limits and usage billing
+- Bring your own API key
 - More agents (tester, security reviewer)
