@@ -143,18 +143,23 @@ def clear_file_ticks() -> None:
         del st.session_state[key]
 
 
-def open_run(user_id: int, run_id: str) -> None:
-    """Button callback on the History page: load a saved run into the normal results view."""
-    result = db.get_run(user_id, run_id)
-    if not result:
+def open_run(user_id: int, thread_id: str) -> None:
+    """Button callback on the History page: load a saved task (all its steps) into the results view."""
+    steps = db.get_thread(user_id, thread_id)
+    if not steps:
         st.session_state["error"] = "That run was not found."
         return
+    for step in steps:
+        step.pop("publish", None) if step is not steps[-1] else None
+        if step.get("repo"):
+            step["repo"]["can_push"] = True  # GitHub itself will refuse if the user can't push
+    result = steps[-1]
     publish = result.pop("publish", None)
-    if result.get("repo"):
-        result["repo"]["can_push"] = True  # GitHub itself will refuse if the user can't push
     clear_file_ticks()
     st.session_state.pop("error", None)
     st.session_state["result"] = result
+    st.session_state["thread_prev"] = steps[:-1]
+    st.session_state["thread_id"] = thread_id
     if publish:
         st.session_state["publish"] = publish
     else:
@@ -405,7 +410,7 @@ with st.sidebar:
 if page == HISTORY:
     st.subheader("Your past runs")
     try:
-        saved = db.list_runs(user["id"])
+        saved = db.list_threads(user["id"])
     except Exception as exc:
         saved = []
         st.error(f"Could not load your history: {exc}")
@@ -417,23 +422,29 @@ if page == HISTORY:
             {
                 "Date": r["created_at"].strftime("%Y-%m-%d %H:%M"),
                 "Request": r["request"][:90],
+                "Steps": r["steps"],
                 "Repo": r["repo"] or "-",
                 "Verdict": r["verdict"] or "-",
-                "Attempts": r["iterations"],
-                "Cost": money(r["cost_usd"]),
-                "Published": "yes" if r["publish_url"] else "",
+                "Total cost": money(r["cost_usd"]),
+                "Published": "yes" if r["published"] else "",
             }
             for r in saved
         ],
         hide_index=True,
     )
-    labels = {r["id"]: f"{r['created_at']:%Y-%m-%d %H:%M} - {r['request'][:60]}" for r in saved}
+    labels = {r["thread_id"]: f"{r['created_at']:%Y-%m-%d %H:%M} - {r['request'][:60]}" for r in saved}
     picked = st.selectbox("Pick a run", list(labels), format_func=labels.get)
-    left, right = st.columns(2)
-    left.button("Open", type="primary", on_click=open_run, args=(user["id"], picked))
-    if right.button("Delete this run"):
-        db.delete_run(user["id"], picked)
-        st.rerun()
+    st.button("Open", type="primary", on_click=open_run, args=(user["id"], picked))
+    steps = db.list_steps(user["id"], picked)
+    if steps:
+        step_labels = {
+            x["id"]: f"Step {i}: {x['request'][:60]}" for i, x in enumerate(steps, 1)
+        }
+        with st.expander(f"Steps in this run ({len(steps)})"):
+            step_id = st.selectbox("Step", list(step_labels), format_func=step_labels.get)
+            if st.button("Delete this step"):
+                db.delete_run(user["id"], step_id)
+                st.rerun()
     if st.session_state.get("error"):
         st.error(st.session_state["error"])
     st.stop()
@@ -464,6 +475,8 @@ queued = st.session_state.pop("queued", None)
 job = None  # (full request text for the team, short text shown to people)
 if run:
     job = (request.strip(), request.strip())
+    st.session_state["thread_prev"] = []  # a brand-new task starts a new thread
+    st.session_state.pop("thread_id", None)
 elif queued and not limit_msg:
     job = (queued["full"], queued["short"])
 
@@ -508,7 +521,10 @@ if job:
             except Exception:
                 pass
             try:
-                outcome["run_id"] = db.save_run(user["id"], job[1], outcome)
+                outcome["run_id"] = db.save_run(
+                    user["id"], job[1], outcome, st.session_state.get("thread_id")
+                )
+                st.session_state.setdefault("thread_id", outcome["run_id"])
             except Exception as exc:  # the run itself succeeded; only the history failed
                 st.warning(f"This run could not be saved to your history: {exc}")
         st.session_state["result"] = outcome
@@ -522,6 +538,8 @@ if job:
     except Exception as exc:  # missing key, API error, GitHub error, cut-off output, ...
         st.session_state["error"] = str(exc)
         pipe.empty()
+        if st.session_state.get("thread_prev"):  # a failed follow-up must not lose the earlier result
+            st.session_state["result"] = st.session_state["thread_prev"].pop()
     if counted and "error" not in st.session_state:
         st.rerun()  # refreshes the sidebar counter; the result is kept in session state
 
@@ -610,6 +628,22 @@ result = st.session_state.get("result")
 if result:
     state, usage, repo_info = result["state"], result["usage"], result.get("repo")
     total = usage["total"]
+    prev_steps = st.session_state.get("thread_prev", [])
+    if prev_steps:
+        thread_cost = sum((r["usage"]["total"].get("cost_usd") or 0.0) for r in [*prev_steps, result])
+        st.caption(
+            f"Showing step {len(prev_steps) + 1} of {len(prev_steps) + 1} · "
+            f"whole task so far: {money(thread_cost)}"
+        )
+        for i, prev in enumerate(prev_steps, 1):
+            with st.expander(f"Step {i}: {prev.get('request') or prev['state']['request']}"):
+                st.markdown(f"**Verdict:** {prev['state']['verdict']} - {describe_outcome(prev['state'])}  ·  "
+                            f"**Cost:** {money(prev['usage']['total'].get('cost_usd'))}")
+                st.markdown("**Answer**")
+                st.markdown(prev["state"]["code"])
+                st.markdown("**Review**")
+                st.markdown(prev["state"]["review"])
+        st.markdown(f"##### Step {len(prev_steps) + 1}: {result.get('request') or state['request']}")
 
     st.markdown(
         verdict_html(
@@ -695,6 +729,7 @@ if result:
     def queue_followup(earlier: str) -> None:
         text = st.session_state.get("followup_text", "").strip()
         if text:
+            st.session_state["thread_prev"] = [*st.session_state.get("thread_prev", []), result]
             st.session_state["queued"] = {
                 "full": build_followup(earlier, state, text),
                 "short": short_label(text),
@@ -704,7 +739,8 @@ if result:
     st.divider()
     st.subheader("Ask for a change")
     st.caption("The team continues from the result above instead of starting over. This counts as a new run.")
-    earlier_label = result.get("request") or state["request"]
+    prev_steps = st.session_state.get("thread_prev", [])
+    earlier_label = (prev_steps[0] if prev_steps else result).get("request") or state["request"]
     follow_ok = (not repo_info) or (mode_choice == REPO and target is not None)
     st.text_area(
         "Follow-up request", key="followup_text", height=90,
