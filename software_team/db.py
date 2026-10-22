@@ -76,6 +76,7 @@ usage = Table(
     Column("day", String(10), primary_key=True),  # UTC date, YYYY-MM-DD
     Column("runs", Integer, nullable=False, default=0),
     Column("cost_usd", Float, nullable=False, default=0.0),
+    Column("tokens", BigInteger, nullable=False, default=0),
 )
 
 _engine: Engine | None = None
@@ -113,6 +114,9 @@ def _migrate(engine: Engine) -> None:
     if "thread_id" not in {c["name"] for c in inspect(engine).get_columns("runs")}:
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE runs ADD COLUMN thread_id VARCHAR(32)"))
+    if "tokens" not in {c["name"] for c in inspect(engine).get_columns("usage")}:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE usage ADD COLUMN tokens BIGINT NOT NULL DEFAULT 0"))
     with engine.begin() as conn:
         conn.execute(text("UPDATE runs SET thread_id = id WHERE thread_id IS NULL"))
 
@@ -286,33 +290,35 @@ def _today() -> str:
 
 
 def usage_today(user_id: int) -> dict[str, float]:
-    """{'runs': n, 'cost_usd': x} for this user since 00:00 UTC."""
+    """{'runs', 'cost_usd', 'tokens'} for this user since 00:00 UTC."""
     with _eng().connect() as conn:
         row = conn.execute(
-            select(usage.c.runs, usage.c.cost_usd).where(usage.c.user_id == user_id, usage.c.day == _today())
+            select(usage.c.runs, usage.c.cost_usd, usage.c.tokens)
+            .where(usage.c.user_id == user_id, usage.c.day == _today())
         ).first()
-    return {"runs": int(row[0]), "cost_usd": float(row[1])} if row else {"runs": 0, "cost_usd": 0.0}
+    if not row:
+        return {"runs": 0, "cost_usd": 0.0, "tokens": 0}
+    return {"runs": int(row[0]), "cost_usd": float(row[1]), "tokens": int(row[2] or 0)}
 
 
-def add_usage(user_id: int, cost_usd: float | None) -> None:
-    """Count one finished run (and its cost, if known) against today's quota."""
-    day, cost = _today(), float(cost_usd or 0.0)
-    with _eng().begin() as conn:
-        done = conn.execute(
+def add_usage(user_id: int, cost_usd: float | None, tokens: int = 0) -> None:
+    """Count one finished run (its cost, if known, and its tokens) against today's quota."""
+    day, cost, tokens = _today(), float(cost_usd or 0.0), int(tokens or 0)
+
+    def bump(conn):
+        return conn.execute(
             update(usage)
             .where(usage.c.user_id == user_id, usage.c.day == day)
-            .values(runs=usage.c.runs + 1, cost_usd=usage.c.cost_usd + cost)
+            .values(runs=usage.c.runs + 1, cost_usd=usage.c.cost_usd + cost, tokens=usage.c.tokens + tokens)
         )
-        if done.rowcount:
+
+    with _eng().begin() as conn:
+        if bump(conn).rowcount:
             return
         try:
-            conn.execute(insert(usage).values(user_id=user_id, day=day, runs=1, cost_usd=cost))
+            conn.execute(insert(usage).values(user_id=user_id, day=day, runs=1, cost_usd=cost, tokens=tokens))
         except IntegrityError:  # another tab created today's row first
-            conn.execute(
-                update(usage)
-                .where(usage.c.user_id == user_id, usage.c.day == day)
-                .values(runs=usage.c.runs + 1, cost_usd=usage.c.cost_usd + cost)
-            )
+            bump(conn)
 
 
 def delete_run(user_id: int, run_id: str) -> None:

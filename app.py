@@ -17,6 +17,7 @@ import streamlit.components.v1 as components
 from main import describe_outcome, format_event
 from software_team import auth, db
 from software_team.config import get_settings
+from software_team.errors import explain
 from software_team.followup import build_followup, short_label
 from software_team.github_client import (
     GitHubClient,
@@ -347,7 +348,7 @@ if LOGIN_ON and not user:  # sign-in page: nothing else is shown until the user 
         st.error(st.session_state["gh_error"])
     st.stop()
 
-quota = {"runs": 0, "cost_usd": 0.0}
+quota = {"runs": 0, "cost_usd": 0.0, "tokens": 0}
 limit_msg = ""  # set when today's limit is used up; blocks the Run buttons
 if user and DB_OK:
     try:
@@ -356,6 +357,8 @@ if user and DB_OK:
         pass  # can't read the counter: don't block people because of it
     if settings.daily_run_limit and quota["runs"] >= settings.daily_run_limit:
         limit_msg = f"You have used all {settings.daily_run_limit} runs for today. The limit resets at 00:00 UTC."
+    elif settings.daily_token_limit and quota["tokens"] >= settings.daily_token_limit:
+        limit_msg = f"You have reached today's token limit ({settings.daily_token_limit:,}). It resets at 00:00 UTC."
     elif settings.daily_cost_limit_usd and quota["cost_usd"] >= settings.daily_cost_limit_usd:
         limit_msg = f"You have reached today's spending limit (${settings.daily_cost_limit_usd:g}). It resets at 00:00 UTC."
 
@@ -381,11 +384,16 @@ with st.sidebar:
             st.caption("History is off: the database is not available.")
             with st.expander("Details"):
                 st.code(DB_ERROR)
-        if DB_OK and (settings.daily_run_limit or settings.daily_cost_limit_usd):
+        if DB_OK and (settings.daily_run_limit or settings.daily_cost_limit_usd or settings.daily_token_limit):
             if settings.daily_run_limit:
                 st.progress(
                     min(1.0, quota["runs"] / settings.daily_run_limit),
                     text=f"Runs today: {quota['runs']} / {settings.daily_run_limit}",
+                )
+            if settings.daily_token_limit:
+                st.progress(
+                    min(1.0, quota["tokens"] / settings.daily_token_limit),
+                    text=f"Tokens today: {quota['tokens']:,} / {settings.daily_token_limit:,}",
                 )
             if settings.daily_cost_limit_usd:
                 st.caption(f"Spent today: ${quota['cost_usd']:.4f} of ${settings.daily_cost_limit_usd:g}")
@@ -481,7 +489,7 @@ elif queued and not limit_msg:
     job = (queued["full"], queued["short"])
 
 if job:
-    for key in ("result", "error", "publish"):
+    for key in ("result", "error", "error_details", "retry_job", "publish"):
         st.session_state.pop(key, None)
     clear_file_ticks()
     is_existing = bool(target and not target["empty"])
@@ -516,7 +524,8 @@ if job:
         outcome["request"] = job[1]
         if user and DB_OK:
             try:
-                db.add_usage(user["id"], outcome["usage"]["total"].get("cost_usd"))
+                tot = outcome["usage"]["total"]
+                db.add_usage(user["id"], tot.get("cost_usd"), (tot.get("input_tokens") or 0) + (tot.get("output_tokens") or 0))
                 counted = True
             except Exception:
                 pass
@@ -536,15 +545,40 @@ if job:
             unsafe_allow_html=True,
         )
     except Exception as exc:  # missing key, API error, GitHub error, cut-off output, ...
-        st.session_state["error"] = str(exc)
+        info = explain(exc)
+        st.session_state["error"] = info["message"]
+        st.session_state["error_details"] = info["details"]
+        st.session_state["retry_job"] = (
+            {"full": job[0], "short": job[1], "followup": not run,
+             "repo": bool(target and mode_choice == REPO)} if info["retry"] else None
+        )
         pipe.empty()
         if st.session_state.get("thread_prev"):  # a failed follow-up must not lose the earlier result
             st.session_state["result"] = st.session_state["thread_prev"].pop()
     if counted and "error" not in st.session_state:
         st.rerun()  # refreshes the sidebar counter; the result is kept in session state
 
+def retry_failed() -> None:
+    """Button callback: run the failed request again (a failed follow-up is added to its task again)."""
+    job_ = st.session_state.pop("retry_job", None)
+    if not job_:
+        return
+    if job_["followup"] and st.session_state.get("result"):
+        st.session_state["thread_prev"] = [*st.session_state.get("thread_prev", []), st.session_state["result"]]
+    st.session_state["queued"] = {"full": job_["full"], "short": job_["short"]}
+
+
 if "error" in st.session_state:
     st.error(st.session_state["error"])
+    if st.session_state.get("error_details"):
+        with st.expander("Technical details"):
+            st.code(st.session_state["error_details"], language=None)
+    retry = st.session_state.get("retry_job")
+    if retry:
+        blocked = bool(limit_msg) or (retry["repo"] and (mode_choice != REPO or target is None))
+        st.button("Retry", type="primary", on_click=retry_failed, disabled=blocked, key="retry_btn")
+        if retry["repo"] and blocked and not limit_msg:
+            st.caption("Select the same repository above (Mode: GitHub repo) to retry.")
 
 
 # ---------------------------------------------------------------- repo changes tab
@@ -613,7 +647,7 @@ def show_changes(state: dict, repo_info: dict) -> None:
                         pass  # the pull request exists; only the history link is missing
                 st.rerun()
             except GitHubError as exc:
-                st.error(str(exc))
+                st.error(explain(exc)["message"])
     if not ready:
         why = (
             "Connect GitHub first (button at the top)." if not token

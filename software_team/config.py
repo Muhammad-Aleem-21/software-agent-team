@@ -46,6 +46,7 @@ class Settings:
     # --- usage limits (per signed-in user, per UTC day; 0 = no limit) ---
     daily_run_limit: int = 10
     daily_cost_limit_usd: float = 0.0
+    daily_token_limit: int = 0
     # --- checking the generated code: "off" | "syntax" (never executes anything) | "run" ---
     code_check: str = "syntax"
 
@@ -87,5 +88,6 @@ def get_settings() -> Settings:
         session_secret=os.getenv("SESSION_SECRET", "").strip(),
         daily_run_limit=max(0, int(os.getenv("DAILY_RUN_LIMIT", "10"))),
         daily_cost_limit_usd=max(0.0, float(os.getenv("DAILY_COST_LIMIT_USD", "0"))),
+        daily_token_limit=max(0, int(os.getenv("DAILY_TOKEN_LIMIT", "0"))),
         code_check=_code_check_mode(app_url),
     )

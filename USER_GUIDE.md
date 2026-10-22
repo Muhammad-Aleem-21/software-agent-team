@@ -107,7 +107,7 @@ Under the results, use **Ask for a change** to say things like "also add input v
 
 ## Daily limit
 
-The sidebar shows **Runs today**. When you reach the daily limit the Run buttons are disabled until 00:00 UTC.
+The sidebar shows **Runs today** (and tokens or spend, if the owner set those limits). When you reach a daily limit the Run buttons are disabled until 00:00 UTC.
 
 ## Automatic code check
 
@@ -160,6 +160,7 @@ After each run you see five cards: **Total cost**, **Input tokens**, **Output to
 | "GitHub says the login expired" | Click **Connect GitHub** again. |
 | I'm asked to sign in again after a refresh | Your browser blocked the cookie. Just sign in again; your history is kept. |
 | My history is empty | Runs are saved after they finish. If you see "History is off", the app's database is unavailable. |
-| Rate limit or "request too large" error | Try a smaller request or a smaller repo, and wait a minute. |
+| An error with a **Retry** button | Read the message. For "busy" or "cut off" errors wait a minute and press **Retry**. Open *Technical details* if the owner asks. |
+| "Request too large" | Ask for something smaller, or pick a smaller repo. |
 | Changes tab says no recognizable files | Run again, or make the request more specific. |
 | The result looks wrong | Read the **Review** tab, increase **Max developer attempts**, and rerun with a clearer request. |

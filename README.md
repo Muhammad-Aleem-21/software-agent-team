@@ -19,7 +19,8 @@ Built with **LangGraph** and **Groq**. A supervisor coordinates three agents wit
 - **GitHub repo mode:** connect GitHub, pick a repo, and the team reads it (or builds in an empty one), then you preview the file changes and open a pull request.
 - **Code check:** before review, Python is parsed and (optionally) run with its tests; failures go back to the Developer.
 - **Follow-ups:** ask for a change on a finished result and the team continues from it.
-- **Daily limits:** per-user caps on runs (and optionally cost), shown in the sidebar.
+- **Friendly errors:** rate limits, GitHub problems and cut-off answers show a plain message, technical details on demand, and a Retry button (`software_team/errors.py`).
+- **Daily limits:** per-user caps on runs (and optionally cost and tokens), shown in the sidebar.
 - **Web UI:** a Streamlit app with live agent progress, results and a usage breakdown.
 
 ## How it works
@@ -106,7 +107,7 @@ Register a GitHub App (Contents and Pull requests: read & write), set its callba
 
 ## Usage limits
 
-Signed-in users get `DAILY_RUN_LIMIT` runs per UTC day (default 10, `0` = unlimited) and optionally `DAILY_COST_LIMIT_USD`. Counters live in the `usage` table, so deleting runs does not refund them. Limits need the database; guests have none.
+Signed-in users get `DAILY_RUN_LIMIT` runs per UTC day (default 10, `0` = unlimited) and optionally `DAILY_COST_LIMIT_USD` and `DAILY_TOKEN_LIMIT`. Counters live in the `usage` table, so deleting runs does not refund them. Limits need the database; guests have none.
 
 ## Code check
 
