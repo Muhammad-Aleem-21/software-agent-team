@@ -99,6 +99,8 @@ The GitHub login is the account. Each run is saved per user in a database (`soft
 
 ## Changing the model or provider
 
+The sidebar has a **Model** picker. Only models listed in `ENABLED_MODELS` (plus the `MODEL_NAME` default) can be chosen; the rest show 🔒 *coming soon*. To open one up, add its API key and package, then add its id to `ENABLED_MODELS`. The list of names shown is `MODEL_CATALOG` in `software_team/config.py`.
+
 Set `MODEL_NAME` (or `DEVELOPER_MODEL`, `REVIEWER_MODEL`, ... per agent). No prefix means Groq. For other providers use `openai:gpt-4o`, `anthropic:claude-sonnet-4-5` or `google:gemini-2.5-flash`, add the matching key (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`) and install its package (`langchain-openai`, `langchain-anthropic`, `langchain-google-genai`). Leave `REASONING_EFFORT` empty for models that don't support it.
 
 ## GitHub repo mode
@@ -107,7 +109,7 @@ Register a GitHub App (Contents and Pull requests: read & write), set its callba
 
 ## Usage limits
 
-Signed-in users get `DAILY_RUN_LIMIT` runs per UTC day (default 10, `0` = unlimited) and optionally `DAILY_COST_LIMIT_USD` and `DAILY_TOKEN_LIMIT`. Counters live in the `usage` table, so deleting runs does not refund them. Limits need the database; guests have none.
+Signed-in users get `DAILY_RUN_LIMIT` runs per day (Pakistan time) (default 10, `0` = unlimited) and optionally `DAILY_COST_LIMIT_USD` and `DAILY_TOKEN_LIMIT`. Counters live in the `usage` table, so deleting runs does not refund them. Limits need the database; guests have none.
 
 ## Code check
 

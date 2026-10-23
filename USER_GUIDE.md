@@ -107,7 +107,7 @@ Under the results, use **Ask for a change** to say things like "also add input v
 
 ## Daily limit
 
-The sidebar shows **Runs today** (and tokens or spend, if the owner set those limits). When you reach a daily limit the Run buttons are disabled until 00:00 UTC.
+The sidebar shows **Runs today** (and tokens or spend, if the owner set those limits). When you reach a daily limit the Run buttons are disabled until midnight (Pakistan time).
 
 ## Automatic code check
 

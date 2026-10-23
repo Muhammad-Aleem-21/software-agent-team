@@ -286,7 +286,9 @@ def set_publish(user_id: int, run_id: str, publish: dict[str, Any]) -> None:
 
 
 def _today() -> str:
-    return _now().strftime("%Y-%m-%d")
+    from .timeutil import today_key
+
+    return today_key()
 
 
 def usage_today(user_id: int) -> dict[str, float]:

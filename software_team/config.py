@@ -21,6 +21,18 @@ DEFAULT_MAX_ITERATIONS = 3
 AGENT_NAMES = ("supervisor", "product_manager", "developer", "reviewer", "repo_analyst")
 
 
+# Models shown in the picker: (id, label). Only the ids in ENABLED_MODELS can be chosen;
+# the others appear as "coming soon". The default MODEL_NAME is always enabled.
+MODEL_CATALOG = (
+    ("openai/gpt-oss-20b", "GPT-OSS 20B (Groq)"),
+    ("openai/gpt-oss-120b", "GPT-OSS 120B (Groq)"),
+    ("openai:gpt-4o-mini", "GPT-4o mini (OpenAI)"),
+    ("openai:gpt-4o", "GPT-4o (OpenAI)"),
+    ("anthropic:claude-sonnet-4-5", "Claude Sonnet 4.5 (Anthropic)"),
+    ("google:gemini-2.5-flash", "Gemini 2.5 Flash (Google)"),
+)
+
+
 @dataclass(frozen=True)
 class Settings:
     groq_api_key: str | None
@@ -47,6 +59,7 @@ class Settings:
     daily_run_limit: int = 10
     daily_cost_limit_usd: float = 0.0
     daily_token_limit: int = 0
+    enabled_models: tuple[str, ...] = ()  # models users may pick in the UI (empty = only the default)
     # --- checking the generated code: "off" | "syntax" (never executes anything) | "run" ---
     code_check: str = "syntax"
 
@@ -89,5 +102,10 @@ def get_settings() -> Settings:
         daily_run_limit=max(0, int(os.getenv("DAILY_RUN_LIMIT", "10"))),
         daily_cost_limit_usd=max(0.0, float(os.getenv("DAILY_COST_LIMIT_USD", "0"))),
         daily_token_limit=max(0, int(os.getenv("DAILY_TOKEN_LIMIT", "0"))),
+        enabled_models=tuple(
+            dict.fromkeys(
+                [default_model, *[m.strip() for m in os.getenv("ENABLED_MODELS", "").split(",") if m.strip()]]
+            )
+        ),
         code_check=_code_check_mode(app_url),
     )

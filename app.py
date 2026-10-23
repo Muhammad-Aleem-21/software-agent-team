@@ -16,7 +16,7 @@ import streamlit.components.v1 as components
 
 from main import describe_outcome, format_event
 from software_team import auth, db
-from software_team.config import get_settings
+from software_team.config import MODEL_CATALOG, get_settings
 from software_team.errors import explain
 from software_team.followup import build_followup, short_label
 from software_team.github_client import (
@@ -28,9 +28,11 @@ from software_team.github_client import (
     sign_state,
     verify_state,
 )
+from software_team.llm import get_llm
 from software_team.graph import build_team_graph, recursion_limit_for
 from software_team.observability import finish_tracing, trace_config, tracing_enabled
 from software_team.repo_context import RepoHandle, parse_changes, unified_diff
+from software_team.timeutil import fmt as fmt_time, reset_text
 from software_team.state import initial_state
 from software_team.tracking import PriceBook, UsageTracker
 from ui_style import CSS, HERO, cards_html, github_button_html, pipeline_html, verdict_html
@@ -277,7 +279,9 @@ def github_panel() -> dict | None:
 
 
 # ---------------------------------------------------------------- running the team
-def run_team_live(request: str, max_iterations: int, log, target: dict | None = None) -> dict:
+def run_team_live(
+    request: str, max_iterations: int, log, target: dict | None = None, model: str | None = None
+) -> dict:
     """Run the graph, writing each new history event to `log`. Returns the result dict."""
     handle, mode = None, ""
     if target:
@@ -293,7 +297,7 @@ def run_team_live(request: str, max_iterations: int, log, target: dict | None = 
             if not handle.paths:
                 raise GitHubError("No readable source files found in this repo (or they are too big).")
 
-    graph = build_team_graph(repo=handle)  # raises RuntimeError if GROQ_API_KEY is missing
+    graph = build_team_graph(llm_factory=lambda name: get_llm(name, model), repo=handle)  # raises RuntimeError if GROQ_API_KEY is missing
     tracker = UsageTracker(PriceBook(online=settings.price_lookup))
     final_state, seen, started = None, 0, time.time()
     try:
@@ -367,11 +371,11 @@ if user and DB_OK:
     except Exception:
         pass  # can't read the counter: don't block people because of it
     if settings.daily_run_limit and quota["runs"] >= settings.daily_run_limit:
-        limit_msg = f"You have used all {settings.daily_run_limit} runs for today. The limit resets at 00:00 UTC."
+        limit_msg = f"You have used all {settings.daily_run_limit} runs for today. The limit resets at {reset_text()}."
     elif settings.daily_token_limit and quota["tokens"] >= settings.daily_token_limit:
-        limit_msg = f"You have reached today's token limit ({settings.daily_token_limit:,}). It resets at 00:00 UTC."
+        limit_msg = f"You have reached today's token limit ({settings.daily_token_limit:,}). It resets at {reset_text()}."
     elif settings.daily_cost_limit_usd and quota["cost_usd"] >= settings.daily_cost_limit_usd:
-        limit_msg = f"You have reached today's spending limit (${settings.daily_cost_limit_usd:g}). It resets at 00:00 UTC."
+        limit_msg = f"You have reached today's spending limit (${settings.daily_cost_limit_usd:g}). It resets at {reset_text()}."
 
 page = NEW_RUN
 with st.sidebar:
@@ -419,7 +423,24 @@ with st.sidebar:
         "Max developer attempts", 1, 5, settings.max_iterations,
         help="How many times the Reviewer may send the code back to the Developer.",
     )
-    st.caption(f"Model: `{settings.model_name}`")
+    enabled = set(settings.enabled_models)
+    catalog = dict(MODEL_CATALOG)
+    catalog.setdefault(settings.model_name, settings.model_name)  # the default is always listed
+    st.session_state.setdefault("model_pick", settings.model_name)
+
+    def keep_enabled() -> None:  # locked models can't be picked: jump back to the default
+        if st.session_state["model_pick"] not in enabled:
+            st.session_state["model_note"] = "That model is not available yet."
+            st.session_state["model_pick"] = settings.model_name
+
+    st.selectbox(
+        "Model", list(catalog), key="model_pick", on_change=keep_enabled,
+        format_func=lambda m: catalog[m] if m in enabled else f"🔒 {catalog[m]} (coming soon)",
+    )
+    if st.session_state.pop("model_note", ""):
+        st.caption("🔒 That model is not available yet.")
+    picked_model = st.session_state["model_pick"] if st.session_state["model_pick"] in enabled else settings.model_name
+    model_override = None if picked_model == settings.model_name else picked_model
     st.caption({"off": "Code check: off", "syntax": "Code check: syntax only",
                 "run": "Code check: runs the code"}[settings.code_check])
     st.caption("Tracing: " + ("on (LangSmith)" if tracing_enabled() else "off"))
@@ -441,7 +462,7 @@ if page == HISTORY:
     st.dataframe(
         [
             {
-                "Date": r["created_at"].strftime("%Y-%m-%d %H:%M"),
+                "Date": fmt_time(r["created_at"]),
                 "Request": r["request"][:90],
                 "Steps": r["steps"],
                 "Repo": r["repo"] or "-",
@@ -453,7 +474,7 @@ if page == HISTORY:
         ],
         hide_index=True,
     )
-    labels = {r["thread_id"]: f"{r['created_at']:%Y-%m-%d %H:%M} - {r['request'][:60]}" for r in saved}
+    labels = {r["thread_id"]: f"{fmt_time(r['created_at'])} - {r['request'][:60]}" for r in saved}
     picked = st.selectbox("Pick a run", list(labels), format_func=labels.get)
     st.button("Open", type="primary", on_click=open_run, args=(user["id"], picked))
     steps = db.list_steps(user["id"], picked)
@@ -533,7 +554,8 @@ if job:
     counted = False
     try:
         outcome = run_team_live(
-            job[0], max_iterations, on_event, target if mode_choice == REPO else None
+            job[0], max_iterations, on_event, target if mode_choice == REPO else None,
+            model=model_override,
         )
         outcome["request"] = job[1]
         if user and DB_OK:

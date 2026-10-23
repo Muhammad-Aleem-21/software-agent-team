@@ -12,3 +12,4 @@ psycopg2-binary>=2.9
 # langchain-openai
 # langchain-anthropic
 # langchain-google-genai
+tzdata>=2024.1

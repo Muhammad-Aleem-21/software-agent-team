@@ -72,10 +72,13 @@ def _build_chat(provider: str, model: str, settings):
     return getattr(module, class_name)(**kwargs)  # the key is read from the environment
 
 
-def get_llm(agent_name: str):
-    """Create the chat model for one agent (model name comes from the settings)."""
+def get_llm(agent_name: str, model_override: str | None = None):
+    """Create the chat model for one agent. The name comes from the settings, unless
+    `model_override` (the user's pick in the UI) is given: then every agent uses that model."""
     settings = get_settings()
-    provider, model = split_model(settings.agent_models.get(agent_name, settings.model_name))
+    provider, model = split_model(
+        model_override or settings.agent_models.get(agent_name, settings.model_name)
+    )
     chat = _build_chat(provider, model, settings)
 
     def call(messages, config: RunnableConfig):
