@@ -168,6 +168,17 @@ def open_run(user_id: int, thread_id: str) -> None:
     st.session_state["page"] = NEW_RUN
 
 
+def new_task() -> None:
+    """Button callback: clear the current result and start with an empty page."""
+    for key in ("result", "error", "error_details", "retry_job", "publish", "queued",
+                "thread_id", "thread_prev"):
+        st.session_state.pop(key, None)
+    st.session_state["request_text"] = ""
+    st.session_state["followup_text"] = ""
+    clear_file_ticks()
+    st.session_state["page"] = NEW_RUN
+
+
 def disconnect_github() -> None:
     for key in ("gh_token", "gh_user", "gh_repos", "gh_info", "publish"):
         st.session_state.pop(key, None)
@@ -400,6 +411,8 @@ with st.sidebar:
         if st.session_state.get("db_warn"):
             st.warning(st.session_state["db_warn"])
         st.divider()
+    if st.session_state.get("result"):
+        st.button("＋ New task", on_click=new_task, key="new_task_side", use_container_width=True)
     st.header("Settings")
     mode_choice = st.radio("Mode", [QUICK, REPO], help="Quick = just code. GitHub repo = work inside a repository.")
     max_iterations = st.slider(
@@ -470,6 +483,7 @@ request = st.text_area(
         else "e.g. Add a password reset feature with email tokens that expire in 15 minutes"
     ),
     height=110,
+    key="request_text",
 )
 run = st.button(
     "Run the team", type="primary",
@@ -771,6 +785,7 @@ if result:
             st.session_state["followup_text"] = ""
 
     st.divider()
+    st.button("＋ Start a new task", on_click=new_task, key="new_task_bottom")
     st.subheader("Ask for a change")
     st.caption("The team continues from the result above instead of starting over. This counts as a new run.")
     prev_steps = st.session_state.get("thread_prev", [])
